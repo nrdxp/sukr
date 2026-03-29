@@ -18,9 +18,16 @@ cargo install --path .
 
 ### With Nix
 
+Run directly:
+
 ```bash
-nix build github:nrdxp/sukr
-./result/bin/sukr --help
+nix run github:nrdxp/sukr -- --help
+```
+
+Or install with Nix:
+
+```bash
+nix profile install github:nrdxp/sukr
 ```
 
 ## Create Your First Site

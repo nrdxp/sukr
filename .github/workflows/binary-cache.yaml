@@ -1,0 +1,39 @@
+name: "Deploy binary cache"
+
+on:
+  push:
+    branches:
+      - "main"
+    paths:
+      - "src/**"
+      - "patches/**"
+      - "queries/**"
+      - "Cargo.*"
+      - "flake.*"
+
+env:
+  CACHE_NAME: "YOUR_CACHE_NAME"
+
+jobs:
+  build:
+    if: "startsWith(github.event.head_commit.message, 'bump:')"
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install nix
+        uses: DeterminateSystems/nix-installer-action@main
+      - name: Cache build artifacts
+        uses: DeterminateSystems/flakehub-cache-action@main
+      - uses: cachix/cachix-action@v16
+        with:
+          name: ${{ env.CACHE_NAME }}
+          # If you chose API tokens for write access OR if you have a private cache
+          authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
+      - name: Build default package
+        run: |
+          nix build --no-link --print-out-paths | cachix push ${{ env.CACHE_NAME }}

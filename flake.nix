@@ -10,51 +10,84 @@
   };
 
   outputs =
-    {
-      self,
-      nixpkgs,
-      fenix,
+    inputs@{
+      flake-parts,
+      ...
     }:
-    let
+    flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [
         "x86_64-linux"
         "aarch64-linux"
         "x86_64-darwin"
         "aarch64-darwin"
       ];
-      forAllSystems = fn: nixpkgs.lib.genAttrs systems (system: fn system);
-    in
-    {
-      devShells = forAllSystems (
-        system:
+      perSystem =
+        {
+          self',
+          pkgs,
+          inputs',
+          ...
+        }:
         let
-          pkgs = nixpkgs.legacyPackages.${system};
-          fenixPkgs = fenix.packages.${system};
-          toolchain = fenixPkgs.fromToolchainFile {
+          fenix = inputs'.fenix.packages;
+          # rustChannel = "stable";
+          toolchain = fenix.fromToolchainFile {
             file = ./rust-toolchain.toml;
-            sha256 = "sha256-vra6TkHITpwRyA5oBKAHSX0Mi6CBDNQD+ryPSpxFsfg=";
+            sha256 = "sha256-qqF33vNuAdU5vua96VKVIwuc43j4EFeEXbjQ6+l4mO4=";
+          };
+          rustplatform = pkgs.makeRustPlatform {
+            cargo = toolchain;
+            rustc = toolchain;
           };
         in
         {
-          default = pkgs.mkShell.override { stdenv = pkgs.clangStdenv; } {
-            RUST_SRC_PATH = "${toolchain}/lib/rustlib/src/rust/library";
-            packages = [
-              toolchain
-              pkgs.treefmt
-              pkgs.shfmt
-              pkgs.rust-analyzer
-              pkgs.taplo
-              pkgs.pkg-config
-              pkgs.nixfmt
-              pkgs.nodePackages.prettier
-              pkgs.miniserve # Dev server for testing
-            ]
-            ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
-              pkgs.apple-sdk
-              pkgs.libiconv
-            ];
+          packages.sukr = rustplatform.buildRustPackage {
+            pname = "sukr";
+            version = "0.1.0";
+            src = ./.;
+            cargoLock = {
+              lockFile = ./Cargo.lock;
+              allowBuiltinFetchGit = true;
+            };
+            # Programs and libraries used at build-time
+            nativeBuildInputs =
+              with pkgs;
+              # Left empty on purpose to easily add if needed
+              [ ]
+              ++ lib.optionals stdenv.isDarwin [
+                apple-sdk
+                libiconv
+              ];
           };
-        }
-      );
+          packages.default = self'.packages.sukr;
+
+          # Default shell opened with `nix develop`
+          devShells.default = pkgs.mkShell {
+            name = "dev";
+
+            # Available packages on https://search.nixos.org/packages
+            buildInputs =
+              with pkgs;
+              [
+                toolchain
+                treefmt
+                shfmt
+                rust-analyzer
+                taplo
+                pkg-config
+                nixfmt
+                nodePackages.prettier
+                miniserve # Dev server for testing
+              ]
+              ++ lib.optionals stdenv.isDarwin [
+                apple-sdk
+                libiconv
+              ];
+
+            shellHook = ''
+              echo "Welcome to the rust devshell!"
+            '';
+          };
+        };
     };
 }
