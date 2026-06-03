@@ -262,6 +262,7 @@ pub fn parse_blocks(markdown: &str) -> (Vec<ContentBlock>, Vec<LinkTarget>) {
 
     let mut heading_level: Option<u8> = None;
     let mut heading_buf = String::new();
+    let mut heading_plain_buf = String::new();
 
     // Image alt text accumulation (images render to Prose but extract links)
     let mut image_alt_buf: Option<String> = None;
@@ -327,11 +328,39 @@ pub fn parse_blocks(markdown: &str) -> (Vec<ContentBlock>, Vec<LinkTarget>) {
                 flush_prose(&mut prose_buf, &mut blocks);
                 heading_level = Some(level as u8);
                 heading_buf.clear();
+                heading_plain_buf.clear();
             },
-            Event::Text(text) if heading_level.is_some() => heading_buf.push_str(&text),
+            Event::Text(text) if heading_level.is_some() => {
+                heading_buf.push_str(&text);
+                heading_plain_buf.push_str(&text);
+            },
+            Event::Code(text) if heading_level.is_some() => {
+                heading_buf.push_str("<code>");
+                heading_buf.push_str(&crate::escape::html_escape(&text));
+                heading_buf.push_str("</code>");
+                heading_plain_buf.push_str(&text);
+            },
+            Event::Start(Tag::Emphasis) if heading_level.is_some() => {
+                heading_buf.push_str("<em>");
+            },
+            Event::End(TagEnd::Emphasis) if heading_level.is_some() => {
+                heading_buf.push_str("</em>");
+            },
+            Event::Start(Tag::Strong) if heading_level.is_some() => {
+                heading_buf.push_str("<strong>");
+            },
+            Event::End(TagEnd::Strong) if heading_level.is_some() => {
+                heading_buf.push_str("</strong>");
+            },
+            Event::Start(Tag::Strikethrough) if heading_level.is_some() => {
+                heading_buf.push_str("<del>");
+            },
+            Event::End(TagEnd::Strikethrough) if heading_level.is_some() => {
+                heading_buf.push_str("</del>");
+            },
             Event::End(TagEnd::Heading(_)) => {
                 if let Some(level) = heading_level.take() {
-                    let id = crate::render::slugify(&heading_buf);
+                    let id = crate::render::slugify(&heading_plain_buf);
                     blocks.push(ContentBlock::Heading {
                         level,
                         text: std::mem::take(&mut heading_buf),
