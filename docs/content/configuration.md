@@ -59,6 +59,27 @@ When `nested = true`, section pages appear as indented sub-items under their par
 
 Both settings can be overridden per-page via frontmatter.
 
+## Extra Configuration
+
+You can define arbitrary custom metadata for your site under the `[extra]` table in `site.toml`. These keys are passed directly to Tera templates and are accessible via the `config.extra` variable:
+
+```toml
+[extra]
+description = "A suckless static site compiler"
+branding_color = "#58a6ff"
+github_repo = "https://github.com/nrdxp/sukr"
+```
+
+Inside any Tera template, retrieve these values using:
+
+```html
+<meta name="description" content="{{ config.extra.description }}" />
+<style>
+  :root { --brand: {{ config.extra.branding_color }}; }
+</style>
+<a href="{{ config.extra.github_repo }}">GitHub</a>
+```
+
 ## CLI Options
 
 ```bash

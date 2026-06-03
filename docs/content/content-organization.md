@@ -35,13 +35,12 @@ content/
 
 ## What Makes a Section
 
-A section is any directory containing `_index.md`. This file:
+A section is any directory containing Markdown content files.
 
-1. Provides metadata for the section (title, description)
-2. Triggers section listing behavior
-3. Appears in the navigation
+- **Explicit Sections**: Directories containing `_index.md` are treated as explicit sections. The `_index.md` file provides metadata (title, description), controls custom listing layouts, and displays in the navigation menus.
+- **Virtual Sections**: If a subdirectory does not contain `_index.md` but contains other Markdown files, `sukr` automatically instantiates a virtual section for it. This virtual section uses default frontmatter settings, deriving its title from the directory name.
 
-Directories without `_index.md` are ignored.
+This recursive section discovery allows building deeply nested content hierarchies without the need to define boilerplate `_index.md` files at every intermediate level.
 
 ## Custom 404 Page
 
@@ -88,6 +87,26 @@ aliases = ["/old/path", "/another/old/path"]
 ```
 
 For each alias, sukr generates an HTML redirect stub using `<meta http-equiv="refresh">`. Bare paths like `/old/path` produce `/old/path/index.html`; paths with extensions like `/old/page.html` are used as-is.
+
+## Relative URL Prefixes
+
+When organizing content in deep directory structures, linking to pages or assets at the root of the site (e.g., `/style.css` or `/images/logo.png`) can be error-prone when served from subdirectories.
+
+To simplify referencing assets and links relative to the site root, `sukr` supports the `{{ prefix }}` (or `{{prefix}}`) placeholder directly in your Markdown content body. At build time, `sukr` automatically replaces this placeholder with the correct relative prefix (such as `.`, `../`, or `../../`) matching the depth of the current page.
+
+For example, a Markdown file located at `content/blog/first-post.md` can reference root-relative links and images like so:
+
+```markdown
+[Return to Home]({{ prefix }}/index.html)
+![Logo]({{ prefix }}/logo.png)
+```
+
+During build time, this gets resolved to:
+
+```markdown
+[Return to Home](../index.html)
+![Logo](../logo.png)
+```
 
 ## Section Discovery
 

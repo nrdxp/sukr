@@ -71,10 +71,10 @@ $$i\hbar\frac{\partial}{\partial t}\Psi = \hat{H}\Psi$$
 
 ## Error Handling
 
-Invalid LaTeX produces an error message inline rather than breaking the build:
+Invalid LaTeX math syntax triggers a compilation error and halts the build. This ensures that any rendered formula on the published site is syntactically valid.
 
-```markdown
-$\invalid{command}$
+If the parser encounters malformed LaTeX, `sukr` outputs the error message and the path to the console:
+
+```text
+render error: math render error in `\invalid{command}`: ...
 ```
-
-Renders with an error indicator showing what went wrong.

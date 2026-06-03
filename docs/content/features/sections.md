@@ -4,7 +4,14 @@ description = "Section types, frontmatter, and template dispatch reference"
 weight = 2
 +++
 
-sukr discovers sections from your content directory structure. For an explanation of how sections work and how directories map to site structure, see [Content Organization](../content-organization.html).
+sukr discovers sections from your content directory structure recursively, supporting multi-level nested site hierarchies. For an explanation of how sections work and how directories map to site structure, see [Content Organization](../content-organization.html).
+
+## Section Discovery & Virtual Sections
+
+During a build, `sukr` scans directories recursively to assemble sections:
+
+- **Explicit Sections**: Defined by creating an `_index.md` file in a directory. This file holds the section's frontmatter configuration and description.
+- **Virtual Sections**: If a subdirectory contains Markdown files but does not contain an `_index.md` file, `sukr` automatically generates a virtual section for it. This virtual section uses default frontmatter settings and derives its title from the directory name.
 
 ## Section Types
 
