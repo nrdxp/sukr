@@ -1,9 +1,11 @@
 //! Site configuration loading.
 
-use crate::error::{ParseError, ParseResult};
-use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+use serde::Deserialize;
+
+use crate::error::{ParseError, ParseResult};
 
 /// Site-wide configuration loaded from site.toml.
 #[derive(Debug, Deserialize)]
@@ -26,6 +28,9 @@ pub struct SiteConfig {
     /// Sitemap configuration.
     #[serde(default)]
     pub sitemap: SitemapConfig,
+    /// Extra arbitrary configuration keys.
+    #[serde(default)]
+    pub extra: Option<toml::Table>,
 }
 
 /// Feed (Atom) generation configuration.
@@ -124,6 +129,30 @@ mod tests {
         assert_eq!(config.title, "Test Site");
         assert_eq!(config.author, "Test Author");
         assert_eq!(config.base_url, "https://example.com/");
+    }
+
+    #[test]
+    fn test_parse_config_extra() {
+        let toml = r##"
+            title = "Test Site"
+            author = "Test Author"
+            base_url = "https://example.com/"
+            
+            [extra]
+            description = "Some description"
+            branding_color = "#58a6ff"
+        "##;
+
+        let config: SiteConfig = toml::from_str(toml).unwrap();
+        let extra = config.extra.expect("extra should be present");
+        assert_eq!(
+            extra.get("description").unwrap().as_str().unwrap(),
+            "Some description"
+        );
+        assert_eq!(
+            extra.get("branding_color").unwrap().as_str().unwrap(),
+            "#58a6ff"
+        );
     }
 
     #[test]

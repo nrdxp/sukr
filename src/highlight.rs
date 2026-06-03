@@ -8,13 +8,14 @@ use std::collections::HashMap;
 use std::sync::LazyLock;
 use std::time::Duration;
 
-use crate::escape::{code_escape, code_escape_into};
 use ropey::RopeSlice;
 use tree_house::highlighter::{Highlight, HighlightEvent, Highlighter};
 use tree_house::{
     InjectionLanguageMarker, Language as THLanguage, LanguageConfig, LanguageLoader, Syntax,
 };
 use tree_house_bindings::Grammar;
+
+use crate::escape::{code_escape, code_escape_into};
 
 /// Supported languages for syntax highlighting.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

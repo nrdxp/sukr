@@ -3,10 +3,12 @@
 //! Provides CSS bundling and minification. The bundler resolves `@import`
 //! rules at build time, inlining imported files into a single output.
 
-use crate::error::{CompileError, CompileResult};
+use std::path::Path;
+
 use lightningcss::bundler::{Bundler, FileProvider};
 use lightningcss::stylesheet::{MinifyOptions, ParserOptions, PrinterOptions};
-use std::path::Path;
+
+use crate::error::{CompileError, CompileResult};
 
 /// Bundle and minify a CSS file, resolving all `@import` rules.
 ///
@@ -47,9 +49,11 @@ pub fn bundle_css(path: &Path) -> CompileResult<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fs;
+
     use tempfile::TempDir;
+
+    use super::*;
 
     #[test]
     fn test_bundle_minifies() {

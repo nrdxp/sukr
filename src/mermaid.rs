@@ -2,8 +2,9 @@
 //!
 //! Converts Mermaid diagram definitions to SVG at build-time.
 
-use mermaid_rs_renderer::RenderOptions;
 use std::panic;
+
+use mermaid_rs_renderer::RenderOptions;
 
 /// Render a Mermaid diagram to SVG.
 ///
