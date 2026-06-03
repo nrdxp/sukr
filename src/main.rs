@@ -15,12 +15,13 @@ mod render;
 mod sitemap;
 mod template_engine;
 
-use crate::content::{Content, NavItem, OUTPUT_INDEX};
-use crate::error::{CompileError, CompileResult, ParseError, Result};
-use crate::template_engine::{ContentContext, TemplateEngine};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+use crate::content::{Content, NavItem, OUTPUT_INDEX};
+use crate::error::{CompileError, CompileResult, ParseError, Result};
+use crate::template_engine::{ContentContext, TemplateEngine};
 
 /// Output filename for the Atom feed.
 const OUTPUT_FEED: &str = "feed.xml";
@@ -127,9 +128,12 @@ fn run(config_path: &Path) -> Result<()> {
         // Render individual content pages for all sections
         for item in items {
             eprintln!("  processing: {}", item.slug);
-            let (html_body, anchors) =
-                render::render_blocks(&item.blocks).map_err(CompileError::Render)?;
             let page_path = format!("/{}", item.output_path.display());
+            let render_prose = |text: &str| {
+                engine.render_prose_string(text, &page_path, &config, &manifest.nav, false)
+            };
+            let (html_body, anchors) =
+                render::render_blocks(&item.blocks, render_prose).map_err(CompileError::Render)?;
             let html = engine.render_content(
                 item,
                 &html_body,
@@ -176,9 +180,12 @@ fn run(config_path: &Path) -> Result<()> {
     // 3. Process standalone pages
     for page in &manifest.pages {
         eprintln!("processing: {}", page.slug);
-        let (html_body, anchors) =
-            render::render_blocks(&page.blocks).map_err(CompileError::Render)?;
         let page_path = format!("/{}", page.output_path.display());
+        let render_prose = |text: &str| {
+            engine.render_prose_string(text, &page_path, &config, &manifest.nav, false)
+        };
+        let (html_body, anchors) =
+            render::render_blocks(&page.blocks, render_prose).map_err(CompileError::Render)?;
         let html = engine.render_page(
             page,
             &html_body,
@@ -268,12 +275,15 @@ fn generate_homepage(
 ) -> CompileResult<()> {
     eprintln!("generating: homepage");
 
-    let (html_body, anchors) =
-        render::render_blocks(&manifest.homepage.blocks).map_err(CompileError::Render)?;
+    let page_path = format!("/{OUTPUT_INDEX}");
+    let render_prose =
+        |text: &str| engine.render_prose_string(text, &page_path, config, &manifest.nav, false);
+    let (html_body, anchors) = render::render_blocks(&manifest.homepage.blocks, render_prose)
+        .map_err(CompileError::Render)?;
     let html = engine.render_page(
         &manifest.homepage,
         &html_body,
-        &format!("/{OUTPUT_INDEX}"),
+        &page_path,
         config,
         &manifest.nav,
         &anchors,
@@ -306,15 +316,12 @@ fn generate_404(
 ) -> CompileResult<()> {
     eprintln!("generating: 404 page");
 
+    let page_path = format!("/{OUTPUT_404}");
+    let render_prose = |text: &str| engine.render_prose_string(text, &page_path, config, nav, true);
     let (html_body, anchors) =
-        render::render_blocks(&page_404.blocks).map_err(CompileError::Render)?;
+        render::render_blocks(&page_404.blocks, render_prose).map_err(CompileError::Render)?;
     let html = engine.render_page(
-        page_404,
-        &html_body,
-        &format!("/{OUTPUT_404}"),
-        config,
-        nav,
-        &anchors,
+        page_404, &html_body, &page_path, config, nav, &anchors,
         true, // 404 needs absolute paths — serving location is unknown
     )?;
 
@@ -632,6 +639,7 @@ mod tests {
             nav: Default::default(),
             feed: Default::default(),
             sitemap: Default::default(),
+            extra: None,
         };
 
         let tags = collect_tags(&sections, &pages, &config);
@@ -669,6 +677,7 @@ mod tests {
             nav: Default::default(),
             feed: Default::default(),
             sitemap: Default::default(),
+            extra: None,
         };
 
         let tags = collect_tags(&sections, &pages, &config);

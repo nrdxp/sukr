@@ -4,9 +4,10 @@
 //! Math → MathML, Diagram → Mermaid SVG, Heading → slug/anchor/pilcrow,
 //! Prose → identity passthrough.
 
+use serde::Serialize;
+
 use crate::escape::{code_escape, html_escape};
 use crate::highlight::{Language, highlight_code};
-use serde::Serialize;
 
 /// A heading anchor extracted from markdown content.
 #[derive(Debug, Clone, Serialize)]
@@ -29,6 +30,7 @@ pub struct Anchor {
 /// error if math rendering fails.
 pub fn render_blocks(
     blocks: &[crate::content::ContentBlock],
+    render_prose: impl Fn(&str) -> String,
 ) -> Result<(String, Vec<Anchor>), String> {
     use crate::content::ContentBlock;
 
@@ -103,7 +105,7 @@ pub fn render_blocks(
 
             // --- Identity: Prose (passthrough) ---
             ContentBlock::Prose(html) => {
-                html_output.push_str(html);
+                html_output.push_str(&render_prose(html));
             },
         }
     }
@@ -131,7 +133,7 @@ mod tests {
     /// Helper: parse markdown and render via the full pipeline.
     fn render_md(md: &str) -> (String, Vec<Anchor>) {
         let (blocks, _links) = parse_blocks(md);
-        render_blocks(&blocks).unwrap()
+        render_blocks(&blocks, |s| s.to_string()).unwrap()
     }
 
     #[test]

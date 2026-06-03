@@ -4,13 +4,14 @@
 //! frontmatter into typed content values. This module implements the
 //! Parse phase of the compiler pipeline.
 
-use crate::error::{ParseError, ParseResult, Result};
+use std::cmp::Ordering;
+use std::path::{Path, PathBuf};
+use std::{fmt, fs};
+
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
-use std::fmt;
-use std::fs;
-use std::path::{Path, PathBuf};
+
+use crate::error::{ParseError, ParseResult, Result};
 
 /// Conventional filename for section index pages.
 pub const SECTION_INDEX: &str = "_index.md";
@@ -205,8 +206,8 @@ impl Ord for SortKey {
                 wa.cmp(wb).then_with(|| ta.cmp(tb))
             },
             // DateDesc sorts before WeightTitle (dated items first)
-            (Self::DateDesc(_), Self::WeightTitle(_, _)) => Ordering::Less,
-            (Self::WeightTitle(_, _), Self::DateDesc(_)) => Ordering::Greater,
+            (Self::DateDesc(_), Self::WeightTitle(..)) => Ordering::Less,
+            (Self::WeightTitle(..), Self::DateDesc(_)) => Ordering::Greater,
         }
     }
 }
@@ -539,7 +540,8 @@ pub fn parse_blocks(markdown: &str) -> (Vec<ContentBlock>, Vec<LinkTarget>) {
                         footnote_counter
                     });
                 prose_buf.push_str(&format!(
-                    "<sup class=\"footnote-ref\" id=\"fn-ref-{}\"><a href=\"#fn-{}\" data-footnote=\"{}\" aria-label=\"Footnote {}\"></a></sup>",
+                    "<sup class=\"footnote-ref\" id=\"fn-ref-{}\"><a href=\"#fn-{}\" \
+                     data-footnote=\"{}\" aria-label=\"Footnote {}\"></a></sup>",
                     num, num, num, num
                 ));
             },
@@ -564,7 +566,7 @@ pub fn parse_blocks(markdown: &str) -> (Vec<ContentBlock>, Vec<LinkTarget>) {
                 (num, label, html)
             })
             .collect();
-        sorted_fns.sort_by_key(|(num, _, _)| *num);
+        sorted_fns.sort_by_key(|(num, ..)| *num);
 
         let mut fn_html = String::from("<aside class=\"footnotes\">\n");
         for (num, _label, content) in &sorted_fns {
@@ -573,7 +575,8 @@ pub fn parse_blocks(markdown: &str) -> (Vec<ContentBlock>, Vec<LinkTarget>) {
                 num, num, content
             ));
             fn_html.push_str(&format!(
-                " <a href=\"#fn-ref-{}\" class=\"footnote-backref\" title=\"Back to text\">↩</a></div>\n",
+                " <a href=\"#fn-ref-{}\" class=\"footnote-backref\" title=\"Back to \
+                 text\">↩</a></div>\n",
                 num
             ));
         }
@@ -744,11 +747,22 @@ impl Content {
             }
         };
 
-        let (blocks, links) = parse_blocks(&body);
+        let page_path = format!("/{}", output_path.display());
+        let depth = page_path.matches('/').count().saturating_sub(1);
+        let prefix = if depth == 0 {
+            ".".to_string()
+        } else {
+            "../".repeat(depth).trim_end_matches('/').to_string()
+        };
+
+        let processed_body = body
+            .replace("{{ prefix }}", &prefix)
+            .replace("{{prefix}}", &prefix);
+        let (blocks, links) = parse_blocks(&processed_body);
 
         Ok(Content {
             frontmatter,
-            body,
+            body: processed_body,
             source_path: path.to_path_buf(),
             slug,
             output_path,
@@ -889,77 +903,115 @@ pub struct Section {
 ///
 /// Section items are collected and sorted at construction time based on
 /// section type. Callers access `section.items` directly.
-pub(crate) fn discover_sections(content_dir: &Path) -> Result<Vec<Section>> {
-    let mut sections = Vec::new();
+fn walk_dirs(dir: &Path, content_dir: &Path, sections: &mut Vec<Section>) -> Result<()> {
+    let index_path = dir.join(SECTION_INDEX);
+    let has_index = index_path.exists();
 
-    let entries = fs::read_dir(content_dir).map_err(|e| ParseError::ReadFile {
-        path: content_dir.to_path_buf(),
+    let mut md_files = Vec::new();
+    let mut subdirs = Vec::new();
+
+    let entries = fs::read_dir(dir).map_err(|e| ParseError::ReadFile {
+        path: dir.to_path_buf(),
         source: e,
     })?;
 
     for entry in entries.filter_map(|e| e.ok()) {
         let path = entry.path();
-
         if path.is_dir() {
-            let index_path = path.join(SECTION_INDEX);
-            if index_path.exists() {
-                let index = Content::from_path(&index_path, ContentKind::Section, content_dir)?;
-                let name = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("section")
-                    .to_string();
-
-                // Section type from frontmatter, or fall back to directory name
-                let section_type = index
-                    .frontmatter
-                    .section_type
-                    .clone()
-                    .unwrap_or_else(|| SectionType::from_str(&name));
-
-                // Collect items and sort by section type
-                let kind = match &section_type {
-                    SectionType::Blog => ContentKind::Post,
-                    SectionType::Projects => ContentKind::Project,
-                    _ => ContentKind::Page,
-                };
-
-                let mut items = Vec::new();
-                for child in fs::read_dir(&path)
-                    .map_err(|e| ParseError::ReadFile {
-                        path: path.clone(),
-                        source: e,
-                    })?
-                    .filter_map(|e| e.ok())
-                {
-                    let child_path = child.path();
-                    if child_path.is_file()
-                        && child_path.extension().is_some_and(|ext| ext == "md")
-                        && child_path.file_name().is_some_and(|n| n != SECTION_INDEX)
-                    {
-                        let content = Content::from_path(&child_path, kind.clone(), content_dir)?;
-                        if !content.frontmatter.draft {
-                            items.push(content);
-                        }
-                    }
-                }
-
-                // Sort items using typed SortKey abstraction
-                items.sort_by(|a, b| {
-                    let key_a = SortKey::for_content(&section_type, &a.frontmatter);
-                    let key_b = SortKey::for_content(&section_type, &b.frontmatter);
-                    key_a.cmp(&key_b)
-                });
-
-                sections.push(Section {
-                    index,
-                    name,
-                    section_type,
-                    items,
-                });
-            }
+            subdirs.push(path);
+        } else if path.is_file()
+            && path.extension().is_some_and(|ext| ext == "md")
+            && path
+                .file_name()
+                .is_some_and(|n| n != SECTION_INDEX && n != PAGE_404)
+        {
+            md_files.push(path);
         }
     }
+
+    if dir != content_dir && (has_index || !md_files.is_empty()) {
+        let relative_path = dir.strip_prefix(content_dir).unwrap_or(dir);
+        let name = relative_path.to_string_lossy().to_string();
+
+        let index = if has_index {
+            Content::from_path(&index_path, ContentKind::Section, content_dir)?
+        } else {
+            let dir_name = dir
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("section")
+                .to_string();
+            let fm = Frontmatter {
+                title: dir_name,
+                description: None,
+                date: None,
+                tags: Vec::new(),
+                weight: None,
+                link_to: None,
+                nav_label: None,
+                section_type: None,
+                template: None,
+                toc: None,
+                draft: false,
+                aliases: Vec::new(),
+            };
+            Content {
+                frontmatter: fm,
+                body: String::new(),
+                source_path: index_path.clone(),
+                slug: SECTION_INDEX.replace(".md", ""),
+                output_path: relative_path.join(OUTPUT_INDEX),
+                blocks: Vec::new(),
+                links: Vec::new(),
+            }
+        };
+
+        let section_type = index.frontmatter.section_type.clone().unwrap_or_else(|| {
+            let last_component = relative_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("section");
+            SectionType::from_str(last_component)
+        });
+
+        let kind = match &section_type {
+            SectionType::Blog => ContentKind::Post,
+            SectionType::Projects => ContentKind::Project,
+            _ => ContentKind::Page,
+        };
+
+        let mut items = Vec::new();
+        for file_path in md_files {
+            let content = Content::from_path(&file_path, kind.clone(), content_dir)?;
+            if !content.frontmatter.draft {
+                items.push(content);
+            }
+        }
+
+        items.sort_by(|a, b| {
+            let key_a = SortKey::for_content(&section_type, &a.frontmatter);
+            let key_b = SortKey::for_content(&section_type, &b.frontmatter);
+            key_a.cmp(&key_b)
+        });
+
+        sections.push(Section {
+            index,
+            name,
+            section_type,
+            items,
+        });
+    }
+
+    for subdir in subdirs {
+        walk_dirs(&subdir, content_dir, sections)?;
+    }
+
+    Ok(())
+}
+
+pub(crate) fn discover_sections(content_dir: &Path) -> Result<Vec<Section>> {
+    let mut sections = Vec::new();
+    walk_dirs(content_dir, content_dir, &mut sections)?;
 
     // Sort sections by weight
     sections.sort_by(|a, b| {
@@ -1152,8 +1204,9 @@ impl SiteManifest {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use std::fs;
+
+    use super::*;
 
     fn create_test_dir() -> tempfile::TempDir {
         tempfile::tempdir().expect("failed to create temp dir")

@@ -151,13 +151,32 @@ impl TemplateEngine {
         self.render(TEMPLATE_TAG_DEFAULT, &ctx)
     }
 
+    /// Render a raw prose string as a Tera template to resolve embedded variables.
+    pub fn render_prose_string(
+        &self,
+        text: &str,
+        page_path: &str,
+        config: &SiteConfig,
+        nav: &[NavItem],
+        absolute: bool,
+    ) -> String {
+        let ctx = self.base_context(page_path, config, nav, absolute);
+        match Tera::one_off(text, &ctx, false) {
+            Ok(rendered) => rendered,
+            Err(e) => {
+                eprintln!("Warning: failed to render template variables in prose: {e}");
+                text.to_string()
+            },
+        }
+    }
+
     /// Build base context with common variables.
     ///
     /// When `absolute` is true, `prefix` is set to the empty string so that
     /// template asset references (`{{ prefix }}/style.css`) produce absolute
     /// root paths (`/style.css`). This is required for pages whose serving
     /// location is unknown at build time (e.g., the 404 page).
-    fn base_context(
+    pub(crate) fn base_context(
         &self,
         page_path: &str,
         config: &SiteConfig,
@@ -200,6 +219,8 @@ pub(crate) struct ConfigContext {
     pub base_url: String,
     /// Navigation settings for templates.
     pub nav: NavContext,
+    /// Extra site-wide variables.
+    pub extra: Option<toml::Table>,
 }
 
 /// Navigation context for templates.
@@ -221,6 +242,7 @@ impl From<&SiteConfig> for ConfigContext {
                 nested: config.nav.nested,
                 toc: config.nav.toc,
             },
+            extra: config.extra.clone(),
         }
     }
 }
@@ -331,6 +353,7 @@ mod tests {
             nav: crate::config::NavConfig::default(),
             feed: crate::config::FeedConfig::default(),
             sitemap: crate::config::SitemapConfig::default(),
+            extra: None,
         };
         let nav: Vec<NavItem> = vec![];
 
@@ -353,6 +376,7 @@ mod tests {
             },
             feed: crate::config::FeedConfig::default(),
             sitemap: crate::config::SitemapConfig::default(),
+            extra: None,
         };
 
         let ctx = ConfigContext::from(&config);
@@ -382,6 +406,7 @@ mod tests {
             },
             feed: crate::config::FeedConfig::default(),
             sitemap: crate::config::SitemapConfig::default(),
+            extra: None,
         };
 
         let config_toc_false = SiteConfig {
@@ -395,6 +420,7 @@ mod tests {
             },
             feed: crate::config::FeedConfig::default(),
             sitemap: crate::config::SitemapConfig::default(),
+            extra: None,
         };
 
         // Frontmatter with explicit toc: true
